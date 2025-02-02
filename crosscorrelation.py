@@ -258,17 +258,14 @@ def main():
 
     # Get overall file durations as fallback for track durations.
     file1_duration = get_file_duration(args.file1)
-    file2_duration = get_file_duration(args.file2)
 
-    # Compute the segment start time for each track (middle segment of length args.seg_length)
-    seg_start1 = compute_segment_start(track1, file1_duration, args.seg_length)
-    seg_start2 = compute_segment_start(track2, file2_duration, args.seg_length)
-    print(f"\nFile1: extracting {args.seg_length:.0f} sec segment starting at {seg_start1:.2f} s")
-    print(f"File2: extracting {args.seg_length:.0f} sec segment starting at {seg_start2:.2f} s")
+    # Compute the segment start time for the first track (middle segment of length args.seg_length)
+    seg_start = compute_segment_start(track1, file1_duration, args.seg_length)
+    print(f"\nFile1: extracting {args.seg_length:.0f} sec segment starting at {seg_start:.2f} s")
 
     # Extract the segments using ffmpeg
-    sr1, audio1 = extract_audio_segment(args.file1, track1["index"], seg_start1, args.seg_length, args.sr)
-    sr2, audio2 = extract_audio_segment(args.file2, track2["index"], seg_start2, args.seg_length, args.sr)
+    sr1, audio1 = extract_audio_segment(args.file1, track1["index"], seg_start, args.seg_length, args.sr)
+    sr2, audio2 = extract_audio_segment(args.file2, track2["index"], seg_start, args.seg_length, args.sr)
     if sr1 != sr2:
         print("Sample rates do not match. Aborting.")
         sys.exit(1)

@@ -55,7 +55,7 @@ def extract_audio(video_file, start_time, seg_length, output_file):
         '-i', video_file,
         '-vn',
         '-ac', '1',
-        '-ar', '44100',  # 44.1 kHz sample rate
+        '-ar', '48000',  # 44.1 kHz sample rate
         '-f', 'wav',
         output_file
     ]
@@ -205,12 +205,12 @@ def find_delay(time_pairs):
     time_delay = t_diffs_sorted[-1][0]
     return time_delay
 
-def align(video1, video2, segment_length=300, fft_bin_size=1024, overlap=0,
+def align(video1, video2, segment_length=1800, fft_bin_size=1024, overlap=0,
           box_height=512, box_width=43, samples_per_box=7):
     """
     Main alignment function:
-      1. Determines the duration of each file and computes a start time so that a
-         5‑minute segment is extracted from the middle.
+      1. Determines the duration of the first file and computes a start time so that a
+         5‑minute segment is extracted from the middle of both files.
       2. Extracts the audio segments (as mono WAV at 44.1 kHz) from each file.
       3. Processes the audio to compute FFT bins, groups them into boxes, and finds
          the strongest frequency peaks.
@@ -220,9 +220,7 @@ def align(video1, video2, segment_length=300, fft_bin_size=1024, overlap=0,
     """
     # Get durations and compute start times for the middle segment.
     dur1 = get_duration(video1)
-    dur2 = get_duration(video2)
-    start1 = max((dur1 / 2) - (segment_length / 2), 0)
-    start2 = max((dur2 / 2) - (segment_length / 2), 0)
+    start = max((dur1 / 2) - (segment_length / 2), 0)
 
     # Generate temporary WAV file names based on the input file names.
     base1 = os.path.splitext(os.path.basename(video1))[0]
@@ -230,10 +228,10 @@ def align(video1, video2, segment_length=300, fft_bin_size=1024, overlap=0,
     wav1 = base1 + "_middle.wav"
     wav2 = base2 + "_middle.wav"
 
-    print(f"Extracting 5-minute segment from {video1} starting at {start1:.2f}s -> {wav1}")
-    extract_audio(video1, start1, segment_length, wav1)
-    print(f"Extracting 5-minute segment from {video2} starting at {start2:.2f}s -> {wav2}")
-    extract_audio(video2, start2, segment_length, wav2)
+    print(f"Extracting 5-minute segment from {video1} starting at {start:.2f}s -> {wav1}")
+    extract_audio(video1, start, segment_length, wav1)
+    print(f"Extracting 5-minute segment from {video2} starting at {start:.2f}s -> {wav2}")
+    extract_audio(video2, start, segment_length, wav2)
 
     # Read the extracted audio data.
     raw_audio1, rate1 = read_audio(wav1)
@@ -261,6 +259,7 @@ def align(video1, video2, segment_length=300, fft_bin_size=1024, overlap=0,
     # Each x coordinate corresponds to one FFT window. The time per window is:
     time_per_x = (fft_bin_size - overlap) / rate  # seconds per FFT window step
     delay_seconds = delay_in_bins * time_per_x
+    delay_seconds = -delay_seconds  # adjust for how to specify with mkvmerge
     delay_ms = delay_seconds * 1000
 
     print("\n=== Alignment Results ===")
