@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-This script extracts a 5‐minute audio segment from the middle of two MKV files,
+This script extracts an audio segment (30 minutes by default) from the middle of two MKV files,
 processes each segment by computing FFT bins and grouping peaks into boxes,
 and then finds matching frequency “features” between the two. It computes the most
 common time offset (in seconds and milliseconds) that best aligns file2’s audio with
 file1’s audio. You can then apply this delay (using mkvtoolnix’s --sync option) when muxing.
 
 Usage:
-    python align_audio_bins.py file1.mkv file2.mkv
+    python3 fft.py file1.mkv file2.mkv
 """
 
 import argparse
@@ -46,7 +46,7 @@ def extract_audio(video_file, start_time, seg_length, output_file):
     """
     Extracts a segment of the audio from video_file using ffmpeg.
     The segment begins at start_time (in seconds) and lasts for seg_length seconds.
-    The audio is converted to mono WAV (44.1 kHz).
+    The audio is converted to mono WAV (48 kHz).
     """
     cmd = [
         'ffmpeg', '-y',
@@ -55,7 +55,7 @@ def extract_audio(video_file, start_time, seg_length, output_file):
         '-i', video_file,
         '-vn',
         '-ac', '1',
-        '-ar', '48000',  # 44.1 kHz sample rate
+        '-ar', '48000',  # 48 kHz sample rate
         '-f', 'wav',
         output_file
     ]
@@ -210,8 +210,8 @@ def align(video1, video2, segment_length=1800, fft_bin_size=1024, overlap=0,
     """
     Main alignment function:
       1. Determines the duration of the first file and computes a start time so that a
-         5‑minute segment is extracted from the middle of both files.
-      2. Extracts the audio segments (as mono WAV at 44.1 kHz) from each file.
+         segment of segment_length seconds is extracted from the middle of both files.
+      2. Extracts the audio segments (as mono WAV at 48 kHz) from each file.
       3. Processes the audio to compute FFT bins, groups them into boxes, and finds
          the strongest frequency peaks.
       4. Finds matching frequency pairs between file1 (reference) and file2.
@@ -228,9 +228,9 @@ def align(video1, video2, segment_length=1800, fft_bin_size=1024, overlap=0,
     wav1 = base1 + "_middle.wav"
     wav2 = base2 + "_middle.wav"
 
-    print(f"Extracting 5-minute segment from {video1} starting at {start:.2f}s -> {wav1}")
+    print(f"Extracting {segment_length:.0f} s segment from {video1} starting at {start:.2f}s -> {wav1}")
     extract_audio(video1, start, segment_length, wav1)
-    print(f"Extracting 5-minute segment from {video2} starting at {start:.2f}s -> {wav2}")
+    print(f"Extracting {segment_length:.0f} s segment from {video2} starting at {start:.2f}s -> {wav2}")
     extract_audio(video2, start, segment_length, wav2)
 
     # Read the extracted audio data.
@@ -270,7 +270,7 @@ def align(video1, video2, segment_length=1800, fft_bin_size=1024, overlap=0,
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Align the audio of two MKV files by matching a 5-minute segment from the middle using FFT bin analysis."
+        description="Align the audio of two MKV files by matching a segment from the middle using FFT bin analysis."
     )
     parser.add_argument("file1", help="First MKV file (reference)")
     parser.add_argument("file2", help="Second MKV file (to be aligned)")

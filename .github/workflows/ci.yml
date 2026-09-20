@@ -1,0 +1,34 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - run: python -m pip install -r requirements.txt
+      - run: python -m pytest
+      - name: Generate the synthetic example
+        run: examples/make-example.sh
+      - name: Run the documented example and check the estimated delay
+        run: |
+          python3 crosscorrelation.py examples/reference.mkv examples/delayed.mkv | tee crosscorrelation.txt
+          grep -F "Computed sync delay to apply to file2's audio: -500 ms" crosscorrelation.txt
+          python3 fft.py examples/reference.mkv examples/delayed.mkv | tee fft.txt
+          grep -F "Computed delay: -0.4907 seconds (-491 ms)" fft.txt
