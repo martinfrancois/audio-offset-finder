@@ -1,6 +1,6 @@
-# mkv-audio-sync
+# audio-offset-finder
 
-Estimate how far the audio of one video file is offset from the audio of another, so the track can be muxed in with the right `--sync` delay.
+Finds the offset between the audio tracks of two MKV files, so the track can be muxed in with the right `mkvmerge --sync` delay.
 
 ## What it does
 
