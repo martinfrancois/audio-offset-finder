@@ -119,8 +119,9 @@ need no ffmpeg.
 - Cross-correlation finds one constant offset. It cannot detect drift, where
   the offset grows over the file because the two sources run at slightly
   different speeds, and it gives no useful result when the audio was cut
-  differently, for example one version with a scene removed. Pick a segment
-  with `--seg_length` that lies inside the common part of both files.
+  differently, for example one version with a scene removed. The segment is
+  always taken from the middle of the first file's track; `--seg_length`
+  only sets how long it is.
 - Cross-correlation of raw samples assumes the two tracks contain the same
   sound. Different mixes, different languages or heavy noise reduction lower
   the correlation peak until a wrong lag wins. Only the peak position is
