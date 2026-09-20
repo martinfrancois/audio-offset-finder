@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Virtualenvs
+venv/
+.venv/
+
+# Editors
+.idea/
+*.iml
+.vscode/
+
+# Media files: generated examples, extracted tracks and the *_middle.wav
+# files fft.py leaves in the working directory
+*.mkv
+*.wav
