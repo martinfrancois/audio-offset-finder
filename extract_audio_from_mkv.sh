@@ -1,7 +1,7 @@
 #!/bin/bash
-# extract_audio.sh
+# extract_audio_from_mkv.sh
 #
-# Usage: ./extract_audio.sh <input_file> [output_prefix]
+# Usage: ./extract_audio_from_mkv.sh <input_file> [output_prefix]
 #   <input_file>    : The MKV (or other) file from which to extract audio.
 #   [output_prefix] : Optional. The prefix for the output files. Default is "track_".
 #

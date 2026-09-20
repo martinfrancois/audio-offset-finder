@@ -3,12 +3,12 @@
 This script calculates the sync delay you should apply to file2's audio track
 when muxing it into file1 (which has the video you wish to keep). Although each
 file is internally in sync (audio and video), the audio streams from the two
-sources may be offset relative to each other. This script extracts a 5‐minute audio
-segment from the middle of the chosen audio track in each file and then uses
-cross‐correlation to compute the offset between them.
+sources may be offset relative to each other. This script extracts an audio segment (30 minutes by default, or
+the whole track when it is shorter) from the middle of the chosen audio track
+in each file and then uses cross-correlation to compute the offset between them.
 
 Usage:
-    python align_audio.py file1.mkv file2.mkv [--lang eng,fra]
+    python3 crosscorrelation.py file1.mkv file2.mkv [--lang eng,fra]
 
 If --lang is provided, only audio streams whose language tag matches one of the
 comma‐separated codes are considered. Otherwise, the first audio track from each file is used.
@@ -218,7 +218,7 @@ def compute_audio_offset(seg1, seg2, sample_rate):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Align the audio tracks of two MKV files by matching a 5-minute segment from the middle."
+        description="Align the audio tracks of two MKV files by matching a segment from the middle."
     )
     parser.add_argument("file1", help="Primary MKV file (the video container to keep)")
     parser.add_argument("file2", help="Secondary MKV file (contains the audio track to align)")
@@ -230,13 +230,13 @@ def main():
     )
     parser.add_argument(
         "--seg_length",
-        help="Length of the audio segment (in seconds) to use for matching (default: 300)",
+        help="Length of the audio segment (in seconds) to use for matching (default: 1800)",
         type=float,
         default=1800,
     )
     parser.add_argument(
         "--sr",
-        help="Sample rate (Hz) for audio extraction (default: 8000)",
+        help="Sample rate (Hz) for audio extraction (default: 48000)",
         type=int,
         default=48000,
     )
