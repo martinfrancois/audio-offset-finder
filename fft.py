@@ -18,6 +18,14 @@ import scipy.io.wavfile
 import os
 import sys
 
+DEFAULT_SEGMENT_LENGTH = 1800  # seconds
+SAMPLE_RATE = 48000  # Hz
+DEFAULT_FFT_BIN_SIZE = 1024
+DEFAULT_OVERLAP = 0
+DEFAULT_BOX_HEIGHT = 512
+DEFAULT_BOX_WIDTH = 43
+DEFAULT_SAMPLES_PER_BOX = 7
+
 def get_duration(video_file):
     """
     Uses ffprobe to get the duration (in seconds) of the given video file.
@@ -46,7 +54,7 @@ def extract_audio(video_file, start_time, seg_length, output_file):
     """
     Extracts a segment of the audio from video_file using ffmpeg.
     The segment begins at start_time (in seconds) and lasts for seg_length seconds.
-    The audio is converted to mono WAV (48 kHz).
+    The audio is converted to mono WAV at SAMPLE_RATE.
     """
     cmd = [
         'ffmpeg', '-y',
@@ -55,7 +63,7 @@ def extract_audio(video_file, start_time, seg_length, output_file):
         '-i', video_file,
         '-vn',
         '-ac', '1',
-        '-ar', '48000',  # 48 kHz sample rate
+        '-ar', str(SAMPLE_RATE),
         '-f', 'wav',
         output_file
     ]
@@ -205,18 +213,45 @@ def find_delay(time_pairs):
     time_delay = t_diffs_sorted[-1][0]
     return time_delay
 
-def align(video1, video2, segment_length=1800, fft_bin_size=1024, overlap=0,
-          box_height=512, box_width=43, samples_per_box=7):
+def find_peaks(data, fft_bin_size, overlap, box_height, box_width, samples_per_box):
+    """
+    Computes the FFT windows of the audio data, groups them into boxes and keeps the
+    strongest points per box.
+    Returns a dictionary mapping frequency bin indices to lists of time coordinates.
+    """
+    horiz_bins = make_horiz_bins(data, fft_bin_size, overlap, box_height)
+    boxes = make_vert_bins(horiz_bins, box_width)
+    return find_bin_max(boxes, samples_per_box)
+
+def compute_delay(audio1, audio2, rate, fft_bin_size=DEFAULT_FFT_BIN_SIZE,
+                  overlap=DEFAULT_OVERLAP, box_height=DEFAULT_BOX_HEIGHT,
+                  box_width=DEFAULT_BOX_WIDTH, samples_per_box=DEFAULT_SAMPLES_PER_BOX):
+    """
+    Finds the delay (in seconds) to apply to audio2 so that it aligns with audio1.
+    Both inputs are 1-D arrays of samples at the given rate. A negative delay means
+    audio2 starts later and must be advanced.
+    """
+    peaks1 = find_peaks(audio1, fft_bin_size, overlap, box_height, box_width, samples_per_box)
+    peaks2 = find_peaks(audio2, fft_bin_size, overlap, box_height, box_width, samples_per_box)
+    delay_in_bins = find_delay(find_freq_pairs(peaks1, peaks2))
+
+    # Each x coordinate corresponds to one FFT window step.
+    time_per_x = (fft_bin_size - overlap) / rate
+    # mkvmerge expects the correction, which is the opposite of the measured lag.
+    return -delay_in_bins * time_per_x
+
+def align(video1, video2, segment_length=DEFAULT_SEGMENT_LENGTH,
+          fft_bin_size=DEFAULT_FFT_BIN_SIZE, overlap=DEFAULT_OVERLAP,
+          box_height=DEFAULT_BOX_HEIGHT, box_width=DEFAULT_BOX_WIDTH,
+          samples_per_box=DEFAULT_SAMPLES_PER_BOX):
     """
     Main alignment function:
       1. Determines the duration of the first file and computes a start time so that a
          segment of segment_length seconds is extracted from the middle of both files.
-      2. Extracts the audio segments (as mono WAV at 48 kHz) from each file.
-      3. Processes the audio to compute FFT bins, groups them into boxes, and finds
-         the strongest frequency peaks.
-      4. Finds matching frequency pairs between file1 (reference) and file2.
-      5. Computes the most common time offset (in units of FFT windows) and converts it
-         into seconds (and milliseconds).
+      2. Extracts the audio segments (as mono WAV at SAMPLE_RATE) from each file.
+      3. Passes both segments to compute_delay, which finds the strongest frequency
+         peaks, matches them between file1 (reference) and file2, and converts the
+         most common time offset (in units of FFT windows) into seconds.
     """
     # Get durations and compute start times for the middle segment.
     dur1 = get_duration(video1)
@@ -242,24 +277,8 @@ def align(video1, video2, segment_length=1800, fft_bin_size=1024, overlap=0,
     rate = rate1
     print(f"Audio sample rate: {rate} Hz")
 
-    # Process file1's audio into FFT bins.
-    bins_dict1 = make_horiz_bins(raw_audio1, fft_bin_size, overlap, box_height)
-    boxes1 = make_vert_bins(bins_dict1, box_width)
-    ft_dict1 = find_bin_max(boxes1, samples_per_box)
-
-    # Process file2's audio into FFT bins.
-    bins_dict2 = make_horiz_bins(raw_audio2, fft_bin_size, overlap, box_height)
-    boxes2 = make_vert_bins(bins_dict2, box_width)
-    ft_dict2 = find_bin_max(boxes2, samples_per_box)
-
-    # Find matching frequency pairs between file1 and file2.
-    pairs = find_freq_pairs(ft_dict1, ft_dict2)
-    delay_in_bins = find_delay(pairs)
-
-    # Each x coordinate corresponds to one FFT window. The time per window is:
-    time_per_x = (fft_bin_size - overlap) / rate  # seconds per FFT window step
-    delay_seconds = delay_in_bins * time_per_x
-    delay_seconds = -delay_seconds  # adjust for how to specify with mkvmerge
+    delay_seconds = compute_delay(raw_audio1, raw_audio2, rate, fft_bin_size, overlap,
+                                  box_height, box_width, samples_per_box)
     delay_ms = delay_seconds * 1000
 
     print("\n=== Alignment Results ===")
