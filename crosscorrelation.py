@@ -3,15 +3,16 @@
 This script calculates the sync delay you should apply to file2's audio track
 when muxing it into file1 (which has the video you wish to keep). Although each
 file is internally in sync (audio and video), the audio streams from the two
-sources may be offset relative to each other. This script extracts an audio segment (30 minutes by default, or
-the whole track when it is shorter) from the middle of the chosen audio track
-in each file and then uses cross-correlation to compute the offset between them.
+sources may be offset relative to each other. This script extracts an audio
+segment (30 minutes by default, or the whole track when it is shorter) from the
+middle of the chosen audio track in each file and then uses cross-correlation
+to compute the offset between them.
 
 Usage:
     python3 crosscorrelation.py file1.mkv file2.mkv [--lang eng,fra]
 
 If --lang is provided, only audio streams whose language tag matches one of the
-comma‐separated codes are considered. Otherwise, the first audio track from each file is used.
+comma-separated codes are considered. Otherwise, the first audio track from each file is used.
 
 The computed delay (in milliseconds) is the value you will supply to mkvtoolnix’s
 --sync option for file2’s audio track. (A negative delay means that file2's audio
@@ -27,6 +28,9 @@ import io
 import numpy as np
 from scipy.signal import correlate, correlation_lags
 from scipy.io import wavfile
+
+DEFAULT_SEG_LENGTH = 1800  # seconds
+DEFAULT_SAMPLE_RATE = 48000  # Hz
 
 
 def run_ffprobe(cmd):
@@ -121,12 +125,12 @@ def select_audio_track(tracks, desired_langs=None):
         return tracks[0]
 
 
-def compute_segment_start(track_info, file_duration, seg_length=300):
+def compute_segment_start(track_info, file_duration, seg_length=DEFAULT_SEG_LENGTH):
     """
     Given a track info dictionary and the overall file duration, compute the start time
     for a segment extracted from the middle of the track.
 
-    We choose a segment of length seg_length seconds (default 300 sec = 5 minutes).
+    We choose a segment of length seg_length seconds (default DEFAULT_SEG_LENGTH).
     The segment will start at: (start_time + effective_duration/2) - seg_length/2, but not less than 0.
 
     If the track's own duration is missing, the overall file duration is used as a fallback.
@@ -150,15 +154,16 @@ def compute_segment_start(track_info, file_duration, seg_length=300):
     return seg_start
 
 
-def extract_audio_segment(filename, track_index, seg_start, seg_length=300, sample_rate=8000):
+def extract_audio_segment(filename, track_index, seg_start, seg_length=DEFAULT_SEG_LENGTH,
+                          sample_rate=DEFAULT_SAMPLE_RATE):
     """
     Uses ffmpeg to extract a segment of the audio track as a mono WAV.
     Parameters:
       filename    : input file name
       track_index : actual stream index of the desired audio track in the file
       seg_start   : start time (in seconds) at which to extract the segment
-      seg_length  : duration (in seconds) of the segment (default 300 s)
-      sample_rate : desired sample rate for extraction (default 8000 Hz)
+      seg_length  : duration (in seconds) of the segment (default DEFAULT_SEG_LENGTH)
+      sample_rate : desired sample rate for extraction (default DEFAULT_SAMPLE_RATE)
     Returns:
       sample_rate, numpy array of audio samples.
     """
@@ -230,15 +235,15 @@ def main():
     )
     parser.add_argument(
         "--seg_length",
-        help="Length of the audio segment (in seconds) to use for matching (default: 1800)",
+        help="Length of the audio segment (in seconds) to use for matching (default: %(default)s)",
         type=float,
-        default=1800,
+        default=DEFAULT_SEG_LENGTH,
     )
     parser.add_argument(
         "--sr",
-        help="Sample rate (Hz) for audio extraction (default: 48000)",
+        help="Sample rate (Hz) for audio extraction (default: %(default)s)",
         type=int,
-        default=48000,
+        default=DEFAULT_SAMPLE_RATE,
     )
     args = parser.parse_args()
 
