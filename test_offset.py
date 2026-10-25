@@ -60,3 +60,17 @@ def test_fft_compute_delay_recovers_known_offset(delay_bins):
 
     # A file whose audio arrives later must be advanced, so the sign flips.
     assert estimated_seconds == pytest.approx(-delay_bins * fft_bin_size / sample_rate, abs=1e-9)
+
+
+def test_ffprobe_reads_audio_language_tag(tmp_path):
+    import subprocess
+    from crosscorrelation import get_audio_tracks
+
+    sample = tmp_path / "language.mka"
+    subprocess.run([
+        "ffmpeg", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=8000:cl=mono",
+        "-t", "0.1", "-c:a", "pcm_s16le", "-metadata:s:a:0", "language=eng", str(sample),
+    ], check=True)
+    tracks = get_audio_tracks(str(sample))
+    assert len(tracks) == 1
+    assert tracks[0]["language"] == "eng"
