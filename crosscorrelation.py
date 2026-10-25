@@ -82,7 +82,7 @@ def get_audio_tracks(filename):
         "ffprobe",
         "-v", "error",
         "-select_streams", "a",
-        "-show_entries", "stream=index,codec_name,start_time,duration,stream_tags=language",
+        "-show_entries", "stream=index,codec_name,start_time,duration:stream_tags=language",
         "-of", "json",
         filename,
     ]
