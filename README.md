@@ -6,7 +6,7 @@ With bad audio, or audio with lots of noise, use `fft.py`.
 
 To cross-check the result in Audacity, use `extract_audio_from_mkv.sh` to get the WAV files of each track.
 
-Install FFmpeg and Python 3.10 or newer, then run `python3 -m pip install -r requirements.txt`.
+Install FFmpeg and Python 3.12 or newer, then run `python3 -m pip install -r requirements.txt`.
 
 ```bash
 python3 crosscorrelation.py reference.mkv other.mkv
