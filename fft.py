@@ -17,6 +17,7 @@ import numpy as np
 import scipy.io.wavfile
 import os
 import sys
+import tempfile
 
 DEFAULT_SEGMENT_LENGTH = 1800  # seconds
 SAMPLE_RATE = 48000  # Hz
@@ -257,20 +258,19 @@ def align(video1, video2, segment_length=DEFAULT_SEGMENT_LENGTH,
     dur1 = get_duration(video1)
     start = max((dur1 / 2) - (segment_length / 2), 0)
 
-    # Generate temporary WAV file names based on the input file names.
-    base1 = os.path.splitext(os.path.basename(video1))[0]
-    base2 = os.path.splitext(os.path.basename(video2))[0]
-    wav1 = base1 + "_middle.wav"
-    wav2 = base2 + "_middle.wav"
+    # Separate temporary paths avoid collisions between equal input basenames
+    # and leave files in the working directory untouched.
+    with tempfile.TemporaryDirectory(prefix="audio-offset-") as directory:
+        wav1 = os.path.join(directory, "reference.wav")
+        wav2 = os.path.join(directory, "other.wav")
 
-    print(f"Extracting {segment_length:.0f} s segment from {video1} starting at {start:.2f}s -> {wav1}")
-    extract_audio(video1, start, segment_length, wav1)
-    print(f"Extracting {segment_length:.0f} s segment from {video2} starting at {start:.2f}s -> {wav2}")
-    extract_audio(video2, start, segment_length, wav2)
+        print(f"Extracting {segment_length:.0f} s segment from {video1} starting at {start:.2f}s -> {wav1}")
+        extract_audio(video1, start, segment_length, wav1)
+        print(f"Extracting {segment_length:.0f} s segment from {video2} starting at {start:.2f}s -> {wav2}")
+        extract_audio(video2, start, segment_length, wav2)
 
-    # Read the extracted audio data.
-    raw_audio1, rate1 = read_audio(wav1)
-    raw_audio2, rate2 = read_audio(wav2)
+        raw_audio1, rate1 = read_audio(wav1)
+        raw_audio2, rate2 = read_audio(wav2)
     if rate1 != rate2:
         print("Sample rates do not match between files.")
         sys.exit(1)
