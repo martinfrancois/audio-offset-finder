@@ -23,11 +23,9 @@ import argparse
 import subprocess
 import json
 import sys
-import io
 
 import numpy as np
 from scipy.signal import correlate, correlation_lags
-from scipy.io import wavfile
 
 DEFAULT_SEG_LENGTH = 1800  # seconds
 DEFAULT_SAMPLE_RATE = 48000  # Hz
@@ -157,7 +155,7 @@ def compute_segment_start(track_info, file_duration, seg_length=DEFAULT_SEG_LENG
 def extract_audio_segment(filename, track_index, seg_start, seg_length=DEFAULT_SEG_LENGTH,
                           sample_rate=DEFAULT_SAMPLE_RATE):
     """
-    Uses ffmpeg to extract a segment of the audio track as a mono WAV.
+    Uses ffmpeg to extract a segment of the audio track as mono 16-bit PCM.
     Parameters:
       filename    : input file name
       track_index : actual stream index of the desired audio track in the file
@@ -169,29 +167,28 @@ def extract_audio_segment(filename, track_index, seg_start, seg_length=DEFAULT_S
     """
     cmd = [
         "ffmpeg",
-        "-hide_banner", "-loglevel", "error",
+        "-hide_banner", "-loglevel", "error", "-xerror",
         "-ss", str(seg_start),
         "-t", str(seg_length),
         "-i", filename,
         "-map", f"0:{track_index}",
         "-ac", "1",              # mono
         "-ar", str(sample_rate), # force sample rate
-        "-f", "wav",
+        "-c:a", "pcm_s16le",
+        "-f", "s16le",
         "pipe:1",
     ]
     try:
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
     except subprocess.CalledProcessError as e:
-        print(f"Error extracting audio segment from {filename}:\n{e.stderr}")
+        detail = e.stderr.decode(errors="replace").strip()
+        print(f'cannot extract audio from "{filename}": {detail}', file=sys.stderr)
         sys.exit(1)
-    # Read the WAV data from the stdout bytes.
-    wav_bytes = io.BytesIO(result.stdout)
-    try:
-        sr, data = wavfile.read(wav_bytes)
-        return sr, data
-    except Exception as e:
-        print(f"Error reading WAV data from {filename}: {e}")
+    # Raw PCM has no length header for a non-seekable pipe to leave unfinished.
+    if not result.stdout or len(result.stdout) % 2:
+        print(f'cannot decode audio from "{filename}": expected complete 16-bit PCM samples', file=sys.stderr)
         sys.exit(1)
+    return sample_rate, np.frombuffer(result.stdout, dtype="<i2")
 
 
 def compute_audio_offset(seg1, seg2, sample_rate):
