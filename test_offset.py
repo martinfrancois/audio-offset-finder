@@ -74,3 +74,42 @@ def test_ffprobe_reads_audio_language_tag(tmp_path):
     tracks = get_audio_tracks(str(sample))
     assert len(tracks) == 1
     assert tracks[0]["language"] == "eng"
+
+
+@pytest.mark.parametrize("sample_rate", [8000, 16000])
+def test_ffmpeg_segment_has_exact_samples_without_wav_warnings(tmp_path, sample_rate):
+    import warnings
+    from crosscorrelation import extract_audio_segment
+
+    source = tmp_path / "source.wav"
+    samples = to_int16(make_noise(sample_rate, 2))
+    wavfile.write(source, sample_rate, samples)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", wavfile.WavFileWarning)
+        rate, actual = extract_audio_segment(
+            str(source), 0, 0.25, seg_length=1, sample_rate=sample_rate
+        )
+
+    assert rate == sample_rate
+    assert len(actual) == sample_rate
+    np.testing.assert_array_equal(actual, samples[sample_rate // 4:sample_rate * 5 // 4])
+
+
+@pytest.mark.parametrize("malformed", [False, True], ids=["truncated", "malformed"])
+def test_ffmpeg_rejects_invalid_audio(tmp_path, malformed, capsys):
+    from crosscorrelation import extract_audio_segment
+
+    source = tmp_path / "broken.wav"
+    if malformed:
+        source.write_bytes(b"not a WAV file")
+    else:
+        wavfile.write(source, 8000, to_int16(make_noise(8000, 1)))
+        source.write_bytes(source.read_bytes()[:8044])
+
+    with pytest.raises(SystemExit) as error:
+        extract_audio_segment(str(source), 0, 0, seg_length=1, sample_rate=8000)
+
+    assert error.value.code == 1
+    output = capsys.readouterr()
+    assert str(source) in output.out + output.err
