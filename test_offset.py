@@ -113,3 +113,46 @@ def test_ffmpeg_rejects_invalid_audio(tmp_path, malformed, capsys):
     assert error.value.code == 1
     output = capsys.readouterr()
     assert str(source) in output.out + output.err
+
+
+def test_fft_alignment_keeps_equal_basenames_separate(tmp_path, monkeypatch):
+    first = tmp_path / "one"
+    second = tmp_path / "two"
+    first.mkdir()
+    second.mkdir()
+    source = to_int16(make_noise(48000, 3))
+    delayed = shift(source, 5120).astype(np.int16)
+    wavfile.write(first / "audio.wav", 48000, source)
+    wavfile.write(second / "audio.wav", 48000, delayed)
+    sentinel = tmp_path / "audio_middle.wav"
+    sentinel.write_bytes(b"existing user file")
+    monkeypatch.chdir(tmp_path)
+
+    actual = fft.align(str(first / "audio.wav"), str(second / "audio.wav"))
+
+    assert actual == pytest.approx(-5120 / 48000)
+    assert sentinel.read_bytes() == b"existing user file"
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["audio_middle.wav", "one", "two"]
+
+
+def test_fft_extraction_failure_removes_temporary_outputs(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    created = []
+
+    def failing_extract(_input, _start, _length, output):
+        path = Path(output)
+        path.write_bytes(b"partial audio")
+        created.append(path)
+        raise SystemExit(1)
+
+    monkeypatch.setattr(fft, "get_duration", lambda _path: 1)
+    monkeypatch.setattr(fft, "extract_audio", failing_extract)
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(SystemExit):
+        fft.align("one/audio.wav", "two/audio.wav")
+
+    assert created
+    assert not created[0].exists()
+    assert not list(tmp_path.iterdir())
