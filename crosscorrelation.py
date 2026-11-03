@@ -23,6 +23,7 @@ import argparse
 import subprocess
 import json
 import sys
+import re
 
 import numpy as np
 from scipy.signal import correlate, correlation_lags
@@ -42,6 +43,120 @@ def run_ffprobe(cmd):
         print(f"Error running ffprobe: {' '.join(cmd)}\n{e.stderr}")
         sys.exit(1)
 
+
+LANGUAGE_ALIASES = {
+    "eng": {"eng", "en"},
+    "en": {"eng", "en"},
+    "ger": {"ger", "deu", "de"},
+    "deu": {"ger", "deu", "de"},
+    "de": {"ger", "deu", "de"},
+    "fra": {"fra", "fre", "fr"},
+    "fre": {"fra", "fre", "fr"},
+    "fr": {"fra", "fre", "fr"},
+    "spa": {"spa", "es"},
+    "es": {"spa", "es"},
+    "ita": {"ita", "it"},
+    "it": {"ita", "it"},
+    "jpn": {"jpn", "ja"},
+    "ja": {"jpn", "ja"},
+    "zho": {"zho", "chi", "zh"},
+    "chi": {"zho", "chi", "zh"},
+    "zh": {"zho", "chi", "zh"},
+    "kor": {"kor", "ko"},
+    "ko": {"kor", "ko"},
+    "por": {"por", "pt"},
+    "pt": {"por", "pt"},
+    "rus": {"rus", "ru"},
+    "ru": {"rus", "ru"},
+    "nld": {"nld", "dut", "nl"},
+    "dut": {"nld", "dut", "nl"},
+    "nl": {"nld", "dut", "nl"},
+}
+
+LANGUAGE_PREFIXES = {
+    "eng": ["english"],
+    "en": ["english"],
+    "ger": ["german", "deutsch"],
+    "deu": ["german", "deutsch"],
+    "de": ["german", "deutsch"],
+    "fra": ["french", "francais"],
+    "fre": ["french", "francais"],
+    "fr": ["french", "francais"],
+    "spa": ["spanish", "espanol"],
+    "es": ["spanish", "espanol"],
+    "ita": ["italian", "italiano"],
+    "it": ["italian", "italiano"],
+    "jpn": ["japanese"],
+    "ja": ["japanese"],
+    "zho": ["chinese"],
+    "chi": ["chinese"],
+    "zh": ["chinese"],
+    "kor": ["korean"],
+    "ko": ["korean"],
+    "por": ["portuguese"],
+    "pt": ["portuguese"],
+    "rus": ["russian"],
+    "ru": ["russian"],
+    "nld": ["dutch"],
+    "dut": ["dutch"],
+    "nl": ["dutch"],
+}
+
+
+def normalize_language_code(lang):
+    if not lang:
+        return "und"
+    return str(lang).strip().lower()
+
+
+def language_aliases(lang):
+    norm = normalize_language_code(lang)
+    return LANGUAGE_ALIASES.get(norm, {norm})
+
+
+def language_matches(track_lang, desired_langs):
+    if not desired_langs:
+        return True
+    track_aliases = language_aliases(track_lang)
+    for desired in desired_langs:
+        if track_aliases & language_aliases(desired):
+            return True
+    return False
+
+
+def normalize_commercial_key(name):
+    if not name:
+        return ""
+    return re.sub(r"\s+", " ", name).strip().casefold()
+
+
+def strip_language_prefix(title, language):
+    if not title:
+        return title
+    cleaned = title.strip()
+    lang = normalize_language_code(language)
+    prefixes = set(language_aliases(lang))
+    for alias in list(prefixes):
+        prefixes.update(LANGUAGE_PREFIXES.get(alias, []))
+    for prefix in sorted(prefixes, key=len, reverse=True):
+        if not prefix:
+            continue
+        pattern = r"^" + re.escape(prefix) + r"\b[\s:-]*"
+        if re.match(pattern, cleaned, flags=re.IGNORECASE):
+            cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE).strip()
+            break
+    return cleaned
+
+
+def derive_commercial_name(title, language, codec_long_name, codec_name):
+    name = title.strip() if title else ""
+    if name:
+        name = re.sub(r"\s*\([^)]*\)\s*$", "", name).strip()
+        name = strip_language_prefix(name, language)
+    if not name:
+        name = codec_long_name or codec_name or "unknown"
+    name = re.sub(r"\s+", " ", name).strip()
+    return name
 
 def get_file_duration(filename):
     """
@@ -80,7 +195,7 @@ def get_audio_tracks(filename):
         "ffprobe",
         "-v", "error",
         "-select_streams", "a",
-        "-show_entries", "stream=index,codec_name,start_time,duration:stream_tags=language",
+        "-show_entries", "stream=index,codec_name,codec_long_name,start_time,duration:stream_tags=language,title",
         "-of", "json",
         filename,
     ]
@@ -90,10 +205,22 @@ def get_audio_tracks(filename):
         streams = data.get("streams", [])
         audio_streams = []
         for stream in streams:
+            tags = stream.get("tags", {}) or {}
+            tags = {str(k).lower(): v for k, v in tags.items()}
+            language = normalize_language_code(tags.get("language"))
+            title = tags.get("title")
+            codec_long_name = stream.get("codec_long_name")
+            commercial_name = derive_commercial_name(
+                title, language, codec_long_name, stream.get("codec_name")
+            )
             audio_streams.append({
                 "index": stream.get("index"),
                 "codec": stream.get("codec_name"),
-                "language": (stream.get("tags", {}).get("language") or "und").lower(),
+                "codec_long_name": codec_long_name,
+                "language": language,
+                "title": title,
+                "commercial_name": commercial_name,
+                "commercial_key": normalize_commercial_key(commercial_name),
                 "start_time": stream.get("start_time"),   # may be None
                 "duration": stream.get("duration"),         # may be None
             })
@@ -103,24 +230,105 @@ def get_audio_tracks(filename):
         sys.exit(1)
 
 
-def select_audio_track(tracks, desired_langs=None):
-    """
-    Given a list of audio track dictionaries (as returned by get_audio_tracks),
-    select one track. If desired_langs (a list of language codes in lowercase) is
-    provided, pick the first track whose language is in that list.
-    Otherwise, return the first track.
-    """
-    if desired_langs:
-        filtered = [t for t in tracks if t["language"] in desired_langs]
-        if not filtered:
-            print(f"No audio track found matching languages {desired_langs}.")
-            sys.exit(1)
-        return filtered[0]
+def filter_tracks_by_language(tracks, desired_langs):
+    if not desired_langs:
+        return tracks
+    return [t for t in tracks if language_matches(t["language"], desired_langs)]
+
+
+def describe_track(track, idx):
+    title = track.get("title") or "(no title)"
+    commercial = track.get("commercial_name") or "unknown"
+    codec = track.get("codec") or "unknown"
+    language = track.get("language") or "und"
+    return f"  [{idx}] stream {track['index']} | {commercial} | {title} | {codec} | {language}"
+
+
+def print_track_list(file_label, tracks):
+    print(f"{file_label}:")
+    for i, track in enumerate(tracks, start=1):
+        print(describe_track(track, i))
+
+
+def prompt_for_index(prompt, max_index):
+    while True:
+        choice = input(prompt).strip()
+        try:
+            idx = int(choice)
+        except ValueError:
+            print("Please enter a number.")
+            continue
+        if 1 <= idx <= max_index:
+            return idx - 1
+        print(f"Please choose a number between 1 and {max_index}.")
+
+
+def prompt_select_track(file_label, tracks, force_prompt=False):
+    if not force_prompt and len(tracks) == 1:
+        track = tracks[0]
+        print(f"{file_label}: using only matching track {track['index']} ({track['commercial_name']})")
+        return track
+    print_track_list(file_label, tracks)
+    idx = prompt_for_index(f"Select audio track for {file_label} (1-{len(tracks)}): ", len(tracks))
+    return tracks[idx]
+
+
+def prompt_select_commercial_name(common_keys, display_names):
+    print("Matching commercial names found:")
+    keys = sorted(common_keys, key=lambda k: display_names.get(k, k))
+    for i, key in enumerate(keys, start=1):
+        print(f"  [{i}] {display_names.get(key, key)}")
+    idx = prompt_for_index(f"Select commercial name (1-{len(keys)}): ", len(keys))
+    return keys[idx]
+
+
+def select_audio_tracks(file1_label, file2_label, tracks1, tracks2, desired_langs):
+    if not tracks1:
+        print(f"No audio tracks found in {file1_label}.")
+        sys.exit(1)
+    if not tracks2:
+        print(f"No audio tracks found in {file2_label}.")
+        sys.exit(1)
+
+    filtered1 = filter_tracks_by_language(tracks1, desired_langs)
+    filtered2 = filter_tracks_by_language(tracks2, desired_langs)
+
+    if desired_langs and not filtered1:
+        available = ", ".join(sorted({t["language"] for t in tracks1}))
+        print(f"No audio track found in {file1_label} matching languages {desired_langs}.")
+        print(f"Available languages: {available}")
+        sys.exit(1)
+    if desired_langs and not filtered2:
+        available = ", ".join(sorted({t["language"] for t in tracks2}))
+        print(f"No audio track found in {file2_label} matching languages {desired_langs}.")
+        print(f"Available languages: {available}")
+        sys.exit(1)
+
+    names1 = {t["commercial_key"] for t in filtered1}
+    names2 = {t["commercial_key"] for t in filtered2}
+    common_keys = {k for k in names1 & names2 if k}
+
+    if not common_keys:
+        print("No matching commercial names across both files.")
+        track1 = prompt_select_track(file1_label, filtered1)
+        track2 = prompt_select_track(file2_label, filtered2)
+        return track1, track2
+
+    display_names = {}
+    for track in filtered1 + filtered2:
+        display_names.setdefault(track["commercial_key"], track["commercial_name"])
+
+    if len(common_keys) > 1:
+        selected_key = prompt_select_commercial_name(common_keys, display_names)
     else:
-        if not tracks:
-            print("No audio tracks found.")
-            sys.exit(1)
-        return tracks[0]
+        selected_key = next(iter(common_keys))
+
+    candidates1 = [t for t in filtered1 if t["commercial_key"] == selected_key]
+    candidates2 = [t for t in filtered2 if t["commercial_key"] == selected_key]
+
+    track1 = prompt_select_track(file1_label, candidates1)
+    track2 = prompt_select_track(file2_label, candidates2)
+    return track1, track2
 
 
 def compute_segment_start(track_info, file_duration, seg_length=DEFAULT_SEG_LENGTH):
@@ -246,17 +454,25 @@ def main():
 
     desired_langs = None
     if args.lang:
-        desired_langs = [lang.strip().lower() for lang in args.lang.split(",")]
+        desired_langs = [normalize_language_code(lang) for lang in args.lang.split(",") if lang.strip()]
 
     print("Extracting audio stream info for file1 …")
     tracks1 = get_audio_tracks(args.file1)
-    track1 = select_audio_track(tracks1, desired_langs)
-    print(f"  Selected file1 audio track: index {track1['index']}, codec {track1['codec']}, language {track1['language']}")
 
     print("Extracting audio stream info for file2 …")
     tracks2 = get_audio_tracks(args.file2)
-    track2 = select_audio_track(tracks2, desired_langs)
-    print(f"  Selected file2 audio track: index {track2['index']}, codec {track2['codec']}, language {track2['language']}")
+
+    track1, track2 = select_audio_tracks(args.file1, args.file2, tracks1, tracks2, desired_langs)
+    print(
+        "  Selected file1 audio track: "
+        f"index {track1['index']}, codec {track1['codec']}, language {track1['language']}, "
+        f"commercial {track1['commercial_name']}"
+    )
+    print(
+        "  Selected file2 audio track: "
+        f"index {track2['index']}, codec {track2['codec']}, language {track2['language']}, "
+        f"commercial {track2['commercial_name']}"
+    )
 
     # Get overall file durations as fallback for track durations.
     file1_duration = get_file_duration(args.file1)

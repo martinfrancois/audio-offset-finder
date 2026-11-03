@@ -14,6 +14,8 @@ python3 crosscorrelation.py reference.mkv other.mkv --lang eng
 python3 fft.py reference.mkv other.mkv
 ```
 
+Audio-track selection accepts language aliases such as `de`, `deu`, and `ger`. It matches track descriptions across the two files and asks you to choose when several codec groups or individual tracks match.
+
 The delay applies to the second file's audio. These scripts measure one constant offset, not clock drift or different edits. FFT extraction uses separate temporary files and removes them after reading, including when extraction fails. Check the result by ear before muxing. The default 30-minute segment uses substantial memory; `--seg_length` limits it in `crosscorrelation.py`.
 
 `examples/make-example.sh` generates a synthetic pair with a 500 ms delay. Run `python3 -m pytest` for the tests.
