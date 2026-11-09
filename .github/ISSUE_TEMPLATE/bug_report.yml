@@ -1,0 +1,31 @@
+name: Bug report
+description: Report an offset or track choice the scripts get wrong, or something else that doesn't work as documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Leave out private paths and personal data, also from logs. Don't attach copyrighted video; a file made with `examples/make-example.sh` or a short description of the streams (from `ffprobe`) helps most.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead, for example the offset you measured by ear.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The command you ran (`crosscorrelation.py`, `fft.py` or `extract_audio_from_mkv.sh`) and the audio streams of both files.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Commit, Python and FFmpeg version, operating system, and anything else that matters here.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Output or logs
+      render: text
